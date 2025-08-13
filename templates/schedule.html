@@ -31,20 +31,24 @@
 
 <div class="section">
     <h1>Book a Reservation</h1>
-    <form method="POST">
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <div class="error">{{ messages[0] }}</div>
-            {% endif %}
-        {% endwith %}
+
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/schedule">
         <label>Date:</label>
-        <input type="date" name="date" required>
+        <input type="date" name="date" value="{{ form_values.date if form_values else '' }}" required>
+
         <label>Time:</label>
-        <input type="time" name="time" required>
+        <input type="time" name="time" value="{{ form_values.time if form_values else '' }}" required>
+
         <label>Party Size (Max 3 per slot):</label>
-        <input type="number" name="party_size" min="1" max="10" required>
+        <input type="number" name="party_size" min="1" max="3" value="{{ form_values.party_size if form_values else '1' }}" required>
+
         <label>Notes:</label>
-        <textarea name="notes"></textarea>
+        <textarea name="notes">{{ form_values.notes if form_values else '' }}</textarea>
+
         <button type="submit">Book Reservation</button>
     </form>
 </div>
