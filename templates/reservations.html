@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book a Reservation</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f5f5f7;
+            color: #000;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+        }
+        .logo { font-weight: 600; }
+        nav a {
+            text-decoration: none;
+            color: #000;
+            margin-left: 1.5rem;
+            font-weight: 500;
+        }
+        nav a:hover { color: #0071e3; }
+
+        .container {
+            max-width: 480px;
+            margin: 3rem auto;
+            background: #fff;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.08);
+        }
+        h2 {
+            margin: 0 0 1rem 0;
+            font-weight: 600;
+            text-align: center;
+        }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.4rem; color: #333; }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            background: #fafafa;
+        }
+        textarea { resize: vertical; min-height: 90px; }
+        .btn {
+            display: inline-block;
+            width: 100%;
+            background: #000;
+            color: #fff;
+            border: none;
+            padding: 0.9rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+        .btn:hover { background: #333; }
+        .error {
+            background: #ffe8e8;
+            color: #a40000;
+            border: 1px solid #ffc9c9;
+            padding: 0.75rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+        .back {
+            display: block;
+            text-align: center;
+            margin-top: 1rem;
+            color: #0071e3;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div class="logo">🍏 MyAppleClone</div>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/reservations">Reservations</a>
+        <a href="/logout">Logout</a>
+    </nav>
+</header>
+
+<div class="container">
+    <h2>Book a Reservation</h2>
+
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+        <div class="form-group">
+            <label for="date">Date</label>
+            <input id="date" name="date" type="date" required value="{{ (form_values.date if form_values else '') }}">
+        </div>
+
+        <div class="form-group">
+            <label for="time">Time</label>
+            <input id="time" name="time" type="time" required value="{{ (form_values.time if form_values else '') }}">
+        </div>
+
+        <div class="form-group">
+            <label for="party_size">Party Size</label>
+            <select id="party_size" name="party_size" required>
+                {% for n in range(1, 11) %}
+                    <option value="{{ n }}" {% if form_values and form_values.party_size|int == n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="notes">Notes (optional)</label>
+            <textarea id="notes" name="notes" placeholder="Allergies, accessibility, preferences...">{{ (form_values.notes if form_values else '') }}</textarea>
+        </div>
+
+        <button type="submit" class="btn">Confirm Reservation</button>
+    </form>
+
+    <a class="back" href="/">← Back to Home</a>
+</div>
+</body>
+</html>
