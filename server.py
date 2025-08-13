@@ -1,51 +1,50 @@
 from flask import Flask, render_template, request, redirect, url_for, session
+from flask_sqlalchemy import SQLAlchemy
 import hashlib
-import json
 import os
 import uuid
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # Needed for session storage
+app.secret_key = "supersecretkey"  # replace for production
 
-USERS_FILE = "users.json"
-RES_FILE = "reservations.json"
+# ---------- Database config ----------
+# Render sets DATABASE_URL. SQLAlchemy prefers "postgresql://" not "postgres://"
+db_url = os.environ.get("DATABASE_URL")
+if db_url and db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-# ---------- Storage helpers ----------
-def load_users():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url or "sqlite:///local.db"  # falls back to local dev db
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
 
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
 
-def load_reservations():
-    if not os.path.exists(RES_FILE):
-        return []
-    try:
-        with open(RES_FILE, "r") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-            if isinstance(data, dict) and "reservations" in data:
-                return data["reservations"]
-    except Exception:
-        pass
-    return []
+# ---------- Models ----------
+class User(db.Model):
+    __tablename__ = "users"
+    username = db.Column(db.String(80), primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
 
-def save_reservations(res_list):
-    with open(RES_FILE, "w") as f:
-        json.dump(res_list, f, indent=2)
+class Reservation(db.Model):
+    __tablename__ = "reservations"
+    id = db.Column(db.String(36), primary_key=True)  # uuid string
+    username = db.Column(db.String(80), db.ForeignKey("users.username"), nullable=False, index=True)
+    date = db.Column(db.String(10), nullable=False)   # "YYYY-MM-DD"
+    time = db.Column(db.String(5), nullable=False)    # "HH:MM"
+    party_size = db.Column(db.Integer, nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-def hash_password(password):
+    # Optional convenience property: combined datetime for sorting/filtering
+    @property
+    def start_at(self) -> datetime:
+        return datetime.strptime(f"{self.date} {self.time}", "%Y-%m-%d %H:%M")
+
+
+# ---------- Helpers ----------
+def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
-
-def parse_dt(date_str, time_str):
-    # "YYYY-MM-DD" + "HH:MM" -> datetime
-    return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
 
 
 # ---------- Routes ----------
@@ -54,41 +53,36 @@ def home():
     if "username" not in session:
         return redirect(url_for("login"))
 
-    users = load_users()
-    name = users[session["username"]]["name"]
+    user = db.session.get(User, session["username"])
+    if not user:
+        session.pop("username", None)
+        return redirect(url_for("login"))
 
-    # Upcoming reservations for this user
-    all_res = load_reservations()
+    # Upcoming reservations
     now = datetime.now()
-    mine = []
-    for r in all_res:
-        if r.get("username") == session["username"]:
-            try:
-                dt = parse_dt(r["date"], r["time"])
-                r["_dt"] = dt
-                if dt >= now:
-                    mine.append(r)
-            except Exception:
-                continue
+    upcoming = (
+        Reservation.query
+        .filter(Reservation.username == user.username)
+        .all()
+    )
+    upcoming = [r for r in upcoming if r.start_at >= now]
+    upcoming.sort(key=lambda r: r.start_at)
 
-    mine.sort(key=lambda r: r["_dt"])
-    # strip helper field
-    for r in mine:
-        r.pop("_dt", None)
+    return render_template("home.html", name=user.name, upcoming=upcoming)
 
-    return render_template("home.html", name=name, upcoming=mine)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
-        users = load_users()
-        if username in users and users[username]["password"] == hash_password(password):
+        user = db.session.get(User, username)
+        if user and user.password_hash == hash_password(password):
             session["username"] = username
             return redirect(url_for("home"))
         return "Invalid username or password"
     return render_template("login.html")
+
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -96,27 +90,37 @@ def signup():
         username = request.form["username"].strip()
         full_name = request.form["name"].strip()
         password = request.form["password"]
-        users = load_users()
-        if username in users:
+
+        if db.session.get(User, username):
             return "Username already taken"
-        users[username] = {"name": full_name, "password": hash_password(password)}
-        save_users(users)
+
+        user = User(
+            username=username,
+            name=full_name,
+            password_hash=hash_password(password),
+        )
+        db.session.add(user)
+        db.session.commit()
         return redirect(url_for("login"))
+
     return render_template("signup.html")
+
 
 @app.route("/logout")
 def logout():
     session.pop("username", None)
     return redirect(url_for("login"))
 
-# ---------- Reservations ----------
+
 @app.route("/reservations", methods=["GET", "POST"])
 def reservations():
     if "username" not in session:
         return redirect(url_for("login"))
 
-    users = load_users()
-    name = users[session["username"]]["name"]
+    user = db.session.get(User, session["username"])
+    if not user:
+        session.pop("username", None)
+        return redirect(url_for("login"))
 
     if request.method == "POST":
         date_str = request.form.get("date", "").strip()
@@ -135,7 +139,7 @@ def reservations():
 
         if not error:
             try:
-                dt = parse_dt(date_str, time_str)
+                dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
                 if dt < datetime.now():
                     error = "Please pick a future date/time."
             except Exception:
@@ -144,30 +148,27 @@ def reservations():
         if error:
             return render_template(
                 "reservations.html",
-                name=name,
+                name=user.name,
                 error=error,
                 form_values={"date": date_str, "time": time_str, "party_size": party_size_str, "notes": notes},
             )
 
         # Save reservation
-        res_list = load_reservations()
-        rid = str(uuid.uuid4())
-        res = {
-            "id": rid,
-            "username": session["username"],
-            "name": name,
-            "date": date_str,
-            "time": time_str,
-            "party_size": int(party_size_str),
-            "notes": notes,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-        }
-        res_list.append(res)
-        save_reservations(res_list)
-        return redirect(url_for("reservation_success", rid=rid))
+        res = Reservation(
+            id=str(uuid.uuid4()),
+            username=user.username,
+            date=date_str,
+            time=time_str,
+            party_size=int(party_size_str),
+            notes=notes,
+        )
+        db.session.add(res)
+        db.session.commit()
+        return redirect(url_for("reservation_success", rid=res.id))
 
-    # GET -> show form
-    return render_template("reservations.html", name=name, error=None, form_values=None)
+    # GET
+    return render_template("reservations.html", name=user.name, error=None, form_values=None)
+
 
 @app.route("/reservations/success")
 def reservation_success():
@@ -175,16 +176,19 @@ def reservation_success():
         return redirect(url_for("login"))
 
     rid = request.args.get("rid")
-    res_list = load_reservations()
-    res = next((r for r in res_list if r["id"] == rid and r["username"] == session["username"]), None)
+    res = Reservation.query.filter_by(id=rid, username=session["username"]).first()
 
-    users = load_users()
-    name = users[session["username"]]["name"]
+    user = db.session.get(User, session["username"])
+    name = user.name if user else "User"
 
     return render_template("reservation_success.html", name=name, reservation=res)
 
 
 # ---------- App entry ----------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Use Render's port or default 5000 locally
-    app.run(host="0.0.0.0", port=port, debug=True)  # debug=True is fine for dev
+    # Create tables if they don't exist
+    with app.app_context():
+        db.create_all()
+
+    port = int(os.environ.get("PORT", 5000))  # Render will set PORT
+    app.run(host="0.0.0.0", port=port, debug=True)  # debug=True ok for dev
