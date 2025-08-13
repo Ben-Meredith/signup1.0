@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Schedule</title>
+<link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css' rel='stylesheet' />
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js'></script>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin:0; padding:0;}
+header { display:flex; justify-content:space-between; padding:1rem 2rem; border-bottom:1px solid #ddd; background:#fff;}
+nav a { margin-left:1rem; text-decoration:none; color:#000;}
+#calendar { max-width: 900px; margin: 2rem auto; }
+</style>
+</head>
+<body>
+<header>
+<div class="logo">🍏 MyAppleClone Admin</div>
+<nav>
+<a href="/admin/home">Schedule</a>
+<a href="/logout">Logout</a>
+</nav>
+</header>
+
+<div id='calendar'></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        height: 650,
+        events: [
+            {% for r in reservations %}
+            {
+                title: "{{ r.user_id }} - {{ r.party_size }} people",
+                start: "{{ r.date }}T{{ r.time }}",
+                description: "{{ r.notes or '' }}"
+            },
+            {% endfor %}
+        ],
+        eventClick: function(info) {
+            alert(info.event.title + "\nNotes: " + info.event.extendedProps.description);
+        }
+    });
+    calendar.render();
+});
+</script>
+</body>
+</html>
