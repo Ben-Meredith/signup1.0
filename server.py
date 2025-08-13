@@ -4,136 +4,110 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey123"  # change this for security
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///reservations.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = 'supersecretkey'
 
 db = SQLAlchemy(app)
 
-# --------- Models ---------
+# Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    username = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
 
 class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), db.ForeignKey('user.username'), nullable=False)
-    date = db.Column(db.Date, nullable=False)
-    time = db.Column(db.String(10), nullable=False)
-    party_size = db.Column(db.Integer, nullable=False)
-    notes = db.Column(db.String(200))
+    username = db.Column(db.String(50), db.ForeignKey('user.username'))
+    title = db.Column(db.String(100))
+    start_time = db.Column(db.DateTime)
+    end_time = db.Column(db.DateTime)
 
-# --------- Routes ---------
-@app.before_first_request
-def create_tables():
-    db.create_all()
-    # create default admin if not exists
-    if not User.query.filter_by(username="admin").first():
-        admin = User(username="admin", password=generate_password_hash("admin123"), is_admin=True)
-        db.session.add(admin)
-        db.session.commit()
+# Initialize database and create admin
+def initialize():
+    with app.app_context():
+        db.create_all()
+        if not User.query.filter_by(username='admin').first():
+            admin = User(
+                username='admin',
+                password=generate_password_hash('admin123'),
+                is_admin=True
+            )
+            db.session.add(admin)
+            db.session.commit()
 
-@app.route("/")
+initialize()
+
+# Routes
+@app.route('/')
 def index():
-    if "username" in session:
-        user = User.query.filter_by(username=session["username"]).first()
+    if 'username' in session:
+        user = User.query.filter_by(username=session['username']).first()
         if user.is_admin:
-            return redirect(url_for("admin_home"))
-        else:
-            return redirect(url_for("home"))
-    return redirect(url_for("login"))
+            return redirect(url_for('admin_home'))
+        return redirect(url_for('schedule'))
+    return redirect(url_for('login'))
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
         user = User.query.filter_by(username=username).first()
-
         if user and check_password_hash(user.password, password):
-            session["username"] = user.username
+            session['username'] = user.username
             if user.is_admin:
-                return redirect(url_for("admin_home"))
-            return redirect(url_for("home"))
-        else:
-            flash("❌ Invalid username or password")
-            return redirect(url_for("login"))
+                return redirect(url_for('admin_home'))
+            return redirect(url_for('schedule'))
+        flash('Invalid username or password', 'danger')
+    return render_template('login.html')
 
-    return render_template("login.html")
-
-@app.route("/logout")
+@app.route('/logout')
 def logout():
-    session.pop("username", None)
-    return redirect(url_for("login"))
+    session.pop('username', None)
+    return redirect(url_for('login'))
 
-@app.route("/signup", methods=["GET", "POST"])
-def signup():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-        full_name = request.form.get("full_name")
+@app.route('/schedule', methods=['GET', 'POST'])
+def schedule():
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
-        if User.query.filter_by(username=username).first():
-            flash("❌ Username already exists")
-            return redirect(url_for("signup"))
+    user = User.query.filter_by(username=session['username']).first()
+    reservations = Reservation.query.filter_by(username=user.username).all()
 
-        new_user = User(username=username, password=generate_password_hash(password))
-        db.session.add(new_user)
-        db.session.commit()
-        flash("✅ Account created successfully")
-        return redirect(url_for("login"))
+    if request.method == 'POST':
+        if len(Reservation.query.all()) >= 3:
+            flash('Maximum of 3 reservations reached.', 'danger')
+        else:
+            title = request.form['title']
+            start_time = datetime.fromisoformat(request.form['start_time'])
+            end_time = datetime.fromisoformat(request.form['end_time'])
+            new_reservation = Reservation(
+                username=user.username,
+                title=title,
+                start_time=start_time,
+                end_time=end_time
+            )
+            db.session.add(new_reservation)
+            db.session.commit()
+            flash('Reservation booked!', 'success')
+        return redirect(url_for('schedule'))
 
-    return render_template("signup.html")
+    return render_template('schedule.html', reservations=reservations, username=user.username)
 
-@app.route("/home")
-def home():
-    if "username" not in session:
-        return redirect(url_for("login"))
-
-    user = User.query.filter_by(username=session["username"]).first()
-    upcoming = Reservation.query.filter_by(username=user.username).all()
-    return render_template("schedule.html", upcoming=upcoming, name=user.username)
-
-@app.route("/reserve", methods=["GET", "POST"])
-def reserve():
-    if "username" not in session:
-        return redirect(url_for("login"))
-
-    if request.method == "POST":
-        date = request.form.get("date")
-        time = request.form.get("time")
-        party_size = int(request.form.get("party_size"))
-        notes = request.form.get("notes")
-        username = session["username"]
-
-        # Limit 3 concurrent reservations
-        total_for_time = Reservation.query.filter_by(date=date, time=time).count()
-        if total_for_time >= 3:
-            flash("❌ Maximum reservations reached for that slot")
-            return redirect(url_for("reserve"))
-
-        new_res = Reservation(username=username, date=datetime.strptime(date, "%Y-%m-%d").date(),
-                              time=time, party_size=party_size, notes=notes)
-        db.session.add(new_res)
-        db.session.commit()
-        flash("✅ Reservation booked!")
-        return redirect(url_for("home"))
-
-    return render_template("reserve.html")
-
-@app.route("/admin")
+@app.route('/admin', methods=['GET'])
 def admin_home():
-    if "username" not in session:
-        return redirect(url_for("login"))
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
-    user = User.query.filter_by(username=session["username"]).first()
+    user = User.query.filter_by(username=session['username']).first()
     if not user.is_admin:
-        return redirect(url_for("home"))
+        flash('Access denied', 'danger')
+        return redirect(url_for('schedule'))
 
     reservations = Reservation.query.all()
-    return render_template("admin.html", reservations=reservations)
+    return render_template('admin.html', reservations=reservations)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
