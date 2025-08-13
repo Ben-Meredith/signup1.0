@@ -3,10 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
 
+# --- Flask App Setup ---
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-# --- Database setup ---
+# --- Database Setup ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -27,6 +28,15 @@ class Reservation(db.Model):
     party_size = db.Column(db.Integer, nullable=False)
     notes = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# --- Ensure DB tables exist ---
+with app.app_context():
+    db.create_all()
+    # Create default admin if not exists
+    if not User.query.filter_by(username="admin").first():
+        admin = User(username="admin", name="Admin", password="admin123", is_admin=True)
+        db.session.add(admin)
+        db.session.commit()
 
 # --- Routes ---
 @app.route("/")
@@ -100,10 +110,10 @@ def schedule():
         party_size = int(request.form.get("party_size"))
         notes = request.form.get("notes")
 
-        # Limit: max 3 active reservations per datetime
+        # Limit max 3 reservations per slot
         existing_count = Reservation.query.filter_by(date=date, time=time).count()
         if existing_count >= 3:
-            flash("Sorry, maximum 3 reservations per time slot.")
+            flash("Maximum 3 reservations per time slot.")
             return render_template("schedule.html", name=user.name)
 
         new_res = Reservation(username=user.username, date=date, time=time, party_size=party_size, notes=notes)
@@ -127,8 +137,7 @@ def admin_home():
     reservations = Reservation.query.all()
     return render_template("admin.html", reservations=reservations)
 
-# --- App entry ---
+# --- Run App ---
 if __name__ == "__main__":
-    db.create_all()  # Make sure database tables exist
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
