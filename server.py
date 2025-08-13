@@ -26,7 +26,7 @@ def home():
     if "username" in session:
         users = load_users()
         name = users[session["username"]]["name"]
-        return f"<h1>Welcome, {name}!</h1><a href='/logout'>Logout</a>"
+        return render_template("home.html", name=name)
     return redirect(url_for("login"))
 
 @app.route("/login", methods=["GET", "POST"])
