@@ -1,168 +1,155 @@
-from flask import Flask, render_template, request, redirect, url_for, session
-import hashlib
-import json
-import os
-import uuid
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-USERS_FILE = "users.json"
-RES_FILE = "reservations.json"
+# Database configuration
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
 
-# ---------- Helpers ----------
-def load_users():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+# ---------- Models ----------
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
-
-def load_reservations():
-    if not os.path.exists(RES_FILE):
-        return []
-    with open(RES_FILE, "r") as f:
-        return json.load(f)
-
-def save_reservations(res_list):
-    with open(RES_FILE, "w") as f:
-        json.dump(res_list, f, indent=2)
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def parse_dt(date_str, time_str):
-    return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+class Reservation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    date = db.Column(db.String(10), nullable=False)  # YYYY-MM-DD
+    time = db.Column(db.String(5), nullable=False)   # HH:MM
+    party_size = db.Column(db.Integer, nullable=False)
+    notes = db.Column(db.String(300))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ---------- Routes ----------
 @app.route("/")
 def home():
-    if "username" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
 
-    users = load_users()
-    username = session["username"]
-    if username == "admin":
+    user = User.query.get(session["user_id"])
+    if not user:
+        session.clear()
+        return redirect(url_for("login"))
+
+    if user.is_admin:
         return redirect(url_for("admin_home"))
 
-    # Regular user schedule
-    all_res = load_reservations()
-    now = datetime.now()
-    mine = [r for r in all_res if r["username"] == username and parse_dt(r["date"], r["time"]) >= now]
-    mine.sort(key=lambda r: parse_dt(r["date"], r["time"]))
-    return render_template("schedule.html", upcoming=mine, form_values=None, error=None)
+    # Regular user home
+    reservations = Reservation.query.filter_by(user_id=user.id).order_by(Reservation.date, Reservation.time).all()
+    return render_template("home.html", name=user.name, upcoming=reservations)
+
+@app.route("/admin")
+def admin_home():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    user = User.query.get(session["user_id"])
+    if not user or not user.is_admin:
+        flash("Access denied")
+        return redirect(url_for("login"))
+
+    reservations = Reservation.query.order_by(Reservation.date, Reservation.time).all()
+    return render_template("admin.html", reservations=reservations)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
-        users = load_users()
-        if username in users and users[username]["password"] == hash_password(password):
-            session["username"] = username
+
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            session["user_id"] = user.id
+            if user.is_admin:
+                return redirect(url_for("admin_home"))
             return redirect(url_for("home"))
-        return "Invalid username or password"
+
+        flash("Invalid username or password")
+        return redirect(url_for("login"))
+
     return render_template("login.html")
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
         username = request.form["username"].strip()
-        full_name = request.form["name"].strip()
+        name = request.form["name"].strip()
         password = request.form["password"]
-        users = load_users()
-        if username in users:
-            return "Username already taken"
-        users[username] = {"name": full_name, "password": hash_password(password)}
-        save_users(users)
+
+        if User.query.filter_by(username=username).first():
+            flash("Username already taken")
+            return redirect(url_for("signup"))
+
+        new_user = User(
+            username=username,
+            name=name,
+            password_hash=generate_password_hash(password),
+            is_admin=False
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        flash("Account created! Please log in.")
         return redirect(url_for("login"))
+
     return render_template("signup.html")
 
 @app.route("/logout")
 def logout():
-    session.pop("username", None)
+    session.clear()
     return redirect(url_for("login"))
 
-# ---------- User Reservations ----------
 @app.route("/schedule", methods=["GET", "POST"])
 def schedule():
-    if "username" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
 
-    username = session["username"]
-    if username == "admin":
-        return redirect(url_for("admin_home"))
-
-    users = load_users()
-    name = users[username]["name"]
-    error = None
-    form_values = None
+    user = User.query.get(session["user_id"])
+    if not user or user.is_admin:
+        return redirect(url_for("login"))
 
     if request.method == "POST":
-        date_str = request.form.get("date", "").strip()
-        time_str = request.form.get("time", "").strip()
-        party_size_str = request.form.get("party_size", "").strip()
+        date = request.form["date"].strip()
+        time = request.form["time"].strip()
+        party_size = int(request.form["party_size"])
         notes = request.form.get("notes", "").strip()
-        form_values = {"date": date_str, "time": time_str, "party_size": party_size_str, "notes": notes}
-
-        # Validate party size
-        try:
-            party_size = int(party_size_str)
-            if party_size < 1 or party_size > 3:
-                error = "Party size must be between 1 and 3."
-        except ValueError:
-            error = "Party size must be a number."
-
-        # Validate datetime
-        if not error:
-            try:
-                dt = parse_dt(date_str, time_str)
-                if dt < datetime.now():
-                    error = "Please select a future date and time."
-            except Exception:
-                error = "Invalid date or time."
 
         # Check max 3 reservations per slot
-        if not error:
-            all_res = load_reservations()
-            slot_count = sum(1 for r in all_res if r["date"] == date_str and r["time"] == time_str)
-            if slot_count >= 3:
-                error = "Sorry, this slot is full. Only 3 reservations allowed per time."
-
-        if not error:
-            res_list = load_reservations()
-            res_list.append({
-                "id": str(uuid.uuid4()),
-                "username": username,
-                "name": name,
-                "date": date_str,
-                "time": time_str,
-                "party_size": party_size,
-                "notes": notes,
-                "created_at": datetime.utcnow().isoformat() + "Z"
-            })
-            save_reservations(res_list)
+        slot_count = Reservation.query.filter_by(date=date, time=time).count()
+        if slot_count >= 3:
+            flash("This slot is full. Please choose another time.")
             return redirect(url_for("schedule"))
 
-    # GET -> show upcoming reservations
-    all_res = load_reservations()
-    upcoming = [r for r in all_res if r["username"] == username and parse_dt(r["date"], r["time"]) >= datetime.now()]
-    upcoming.sort(key=lambda r: parse_dt(r["date"], r["time"]))
-    return render_template("schedule.html", upcoming=upcoming, form_values=form_values, error=error)
+        reservation = Reservation(user_id=user.id, date=date, time=time, party_size=party_size, notes=notes)
+        db.session.add(reservation)
+        db.session.commit()
+        flash("Reservation booked successfully!")
+        return redirect(url_for("home"))
 
-# ---------- Admin ----------
-@app.route("/admin")
-def admin_home():
-    if "username" not in session or session["username"] != "admin":
-        return redirect(url_for("login"))
+    return render_template("schedule.html", name=user.name)
 
-    reservations = load_reservations()
-    reservations.sort(key=lambda r: parse_dt(r["date"], r["time"]))
-    return render_template("admin.html", reservations=reservations)
+# ---------- Admin initial setup ----------
+@app.before_first_request
+def create_admin():
+    db.create_all()
+    admin = User.query.filter_by(username="admin").first()
+    if not admin:
+        admin = User(
+            username="admin",
+            name="Administrator",
+            password_hash=generate_password_hash("admin123"),
+            is_admin=True
+        )
+        db.session.add(admin)
+        db.session.commit()
 
 # ---------- Run ----------
 if __name__ == "__main__":
