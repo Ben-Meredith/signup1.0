@@ -1,1 +1,7 @@
 
+{
+  "admin": {
+    "name": "Administrator",
+    "password": "e99a18c428cb38d5f260853678922e03"  // this is the hash for "admin123"
+  }
+}
