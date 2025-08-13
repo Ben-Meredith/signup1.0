@@ -96,4 +96,69 @@
         padding: 2rem;
         font-size: 0.875rem;
         color: #777;
-        border-top: 1px solid #ddd
+        border-top: 1px solid #ddd;
+        margin-top: 2rem;
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <div class="logo">🍏 MyAppleClone</div>
+    <nav>
+        <a href="#">Store</a>
+        <a href="#">Products</a>
+        <a href="/reservations">Reservations</a>
+        <a href="/logout">Logout</a>
+    </nav>
+</header>
+
+<div class="hero">
+    <h1>Welcome, {{ name }}</h1>
+    <p>Experience the future. Simple. Elegant. Yours.</p>
+    <a href="/reservations">Book a Reservation</a>
+</div>
+
+<div class="section">
+    <h2>Your Upcoming Reservations</h2>
+    <p>Manage what’s next at a glance.</p>
+    <div class="card">
+        {% if upcoming and upcoming|length > 0 %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Party</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in upcoming %}
+                    <tr>
+                        <td>{{ r.date }}</td>
+                        <td>{{ r.time }}</td>
+                        <td>{{ r.party_size }}</td>
+                        <td>{{ r.notes or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No upcoming reservations yet. <a href="/reservations">Book one now</a>.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section">
+    <h2>Our Latest Innovation</h2>
+    <p>Discover cutting-edge design and technology built just for you.</p>
+    <img src="https://www.apple.com/v/home/aj/images/heroes/iphone-15-pro/hero_iphone15pro__i70z9oz3hj2i_largetall.jpg" alt="Product Image">
+</div>
+
+<footer>
+    &copy; 2025 MyAppleClone. All rights reserved.
+</footer>
+
+</body>
+</html>
