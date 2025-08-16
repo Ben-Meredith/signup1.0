@@ -2,38 +2,54 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#f7f9fc; margin:0; padding:20px; }
-    .nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-    .card { background:white; padding:1.5rem; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1); margin-bottom:20px; }
-    table { width:100%; border-collapse:collapse; margin-top:10px; }
-    th, td { padding:10px; border-bottom:1px solid #ddd; text-align:left; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: #f9f9f9; color: #111;
+      display: flex; justify-content: center; align-items: center;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 600px; width: 100%;
+      background: white;
+      padding: 30px; border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    h2 { text-align: center; }
+    ul { padding: 0; list-style: none; }
+    li {
+      background: #f0f0f0;
+      margin: 8px 0; padding: 12px;
+      border-radius: 10px;
+      display: flex; justify-content: space-between;
+      align-items: center;
+    }
+    form { display: inline; }
+    button {
+      background: #ff3b30; color: white;
+      border: none; padding: 6px 12px;
+      border-radius: 8px; cursor: pointer;
+    }
+    button:hover { background: #c62828; }
   </style>
 </head>
 <body>
-  <div class="nav">
-    <h2>Admin Dashboard</h2>
-    <a href="{{ url_for('logout') }}">Logout</a>
-  </div>
-
-  <div class="card">
-    <h3>All Reservations</h3>
-    {% if reservations %}
-      <table>
-        <tr><th>User</th><th>Title</th><th>Start</th><th>End</th></tr>
-        {% for r in reservations %}
-          <tr>
-            <td>{{ r.username }}</td>
-            <td>{{ r.title }}</td>
-            <td>{{ r.start_time }}</td>
-            <td>{{ r.end_time }}</td>
-          </tr>
-        {% endfor %}
-      </table>
-    {% else %}
-      <p>No reservations have been made yet.</p>
-    {% endif %}
+  <div class="container">
+    <h2>Admin Panel</h2>
+    <ul>
+      {% for r in reservations %}
+        <li>
+          {{ r['type'] }} — {{ r['start_time'] }} ({{ r['user'] }})
+          <form method="POST" action="/delete/{{ loop.index0 }}">
+            <button type="submit">Delete</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
   </div>
 </body>
 </html>
