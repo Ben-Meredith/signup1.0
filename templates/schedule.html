@@ -2,55 +2,65 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Schedule</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#f7f9fc; margin:0; padding:20px; }
-    .nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-    .card { background:white; padding:1.5rem; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1); margin-bottom:20px; }
-    input, button { padding:10px; margin:8px 0; border-radius:6px; border:1px solid #ccc; }
-    button { background:#2e6eff; color:white; border:none; cursor:pointer; }
-    button:hover { background:#244ec9; }
-    table { width:100%; border-collapse:collapse; margin-top:10px; }
-    th, td { padding:10px; border-bottom:1px solid #ddd; text-align:left; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: #f9f9f9; color: #111;
+      display: flex; justify-content: center; align-items: center;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 500px; width: 100%;
+      background: white;
+      padding: 30px; border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    select, input, button {
+      width: 100%; padding: 12px; margin: 10px 0;
+      border-radius: 10px; border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      background: #007aff; color: white;
+      border: none; cursor: pointer;
+    }
+    button:hover { background: #005bb5; }
+    h2 { text-align: center; }
+    ul { padding: 0; list-style: none; }
+    li {
+      background: #f0f0f0;
+      margin: 8px 0; padding: 10px;
+      border-radius: 10px;
+    }
   </style>
 </head>
 <body>
-  <div class="nav">
-    <h2>Hello, {{ username }}</h2>
-    <a href="{{ url_for('logout') }}">Logout</a>
-  </div>
-
-  <div class="card">
-    <h3>Book a Reservation</h3>
+  <div class="container">
+    <h2>Book a Reservation</h2>
     <form method="POST">
-      <input type="text" name="title" placeholder="Reservation Title" required><br>
-      <label>Start Time:</label><br>
-      <input type="datetime-local" name="start_time" required><br>
-      <label>End Time:</label><br>
-      <input type="datetime-local" name="end_time" required><br>
-      <button type="submit">Book</button>
-    </form>
-  </div>
+      <label for="reservation_type">Reservation Type:</label>
+      <select name="reservation_type" id="reservation_type" required>
+        <option value="Option 1">Option 1</option>
+        <option value="Option 2">Option 2</option>
+        <option value="Option 3">Option 3</option>
+      </select>
 
-  <div class="card">
-    <h3>Your Reservations</h3>
-    {% if reservations %}
-      <table>
-        <tr><th>Title</th><th>Start</th><th>End</th></tr>
-        {% for r in reservations %}
-          <tr>
-            <td>{{ r.title }}</td>
-            <td>{{ r.start_time }}</td>
-            <td>{{ r.end_time }}</td>
-          </tr>
-        {% endfor %}
-      </table>
-    {% else %}
-      <p>No reservations yet.</p>
-    {% endif %}
+      <label for="start_time">Start Time:</label>
+      <input type="datetime-local" name="start_time" required>
+
+      <button type="submit">Reserve</button>
+    </form>
+
+    <h2>Current Reservations</h2>
+    <ul>
+      {% for r in reservations %}
+        <li>{{ r['type'] }} — {{ r['start_time'] }} ({{ r['user'] }})</li>
+      {% endfor %}
+    </ul>
   </div>
-</body>
-</html>
-<footer>&copy; 2025 MyAppleClone. All rights reserved.</footer>
 </body>
 </html>
