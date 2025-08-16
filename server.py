@@ -10,7 +10,9 @@ app.config['SECRET_KEY'] = 'supersecretkey'
 
 db = SQLAlchemy(app)
 
-# Models
+# =======================
+# Database Models
+# =======================
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -24,10 +26,13 @@ class Reservation(db.Model):
     start_time = db.Column(db.DateTime)
     end_time = db.Column(db.DateTime)
 
-# Initialize database and create admin
+# =======================
+# Init Database + Admin
+# =======================
 def initialize():
     with app.app_context():
         db.create_all()
+        # Make sure admin always exists
         if not User.query.filter_by(username='admin').first():
             admin = User(
                 username='admin',
@@ -39,7 +44,9 @@ def initialize():
 
 initialize()
 
+# =======================
 # Routes
+# =======================
 @app.route('/')
 def index():
     if 'username' in session:
@@ -49,6 +56,7 @@ def index():
         return redirect(url_for('schedule'))
     return redirect(url_for('login'))
 
+# ---------- LOGIN ----------
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -63,11 +71,29 @@ def login():
         flash('Invalid username or password', 'danger')
     return render_template('login.html')
 
+# ---------- SIGNUP ----------
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = generate_password_hash(request.form['password'])
+        if User.query.filter_by(username=username).first():
+            flash("Username already exists!", "danger")
+            return redirect(url_for('signup'))
+        new_user = User(username=username, password=password, is_admin=False)
+        db.session.add(new_user)
+        db.session.commit()
+        flash("Account created! Please login.", "success")
+        return redirect(url_for('login'))
+    return render_template('signup.html')
+
+# ---------- LOGOUT ----------
 @app.route('/logout')
 def logout():
     session.pop('username', None)
     return redirect(url_for('login'))
 
+# ---------- USER SCHEDULE ----------
 @app.route('/schedule', methods=['GET', 'POST'])
 def schedule():
     if 'username' not in session:
@@ -77,8 +103,9 @@ def schedule():
     reservations = Reservation.query.filter_by(username=user.username).all()
 
     if request.method == 'POST':
+        # Limit: only 3 reservations allowed TOTAL
         if len(Reservation.query.all()) >= 3:
-            flash('Maximum of 3 reservations reached.', 'danger')
+            flash('Maximum of 3 reservations reached. Cannot book more.', 'danger')
         else:
             title = request.form['title']
             start_time = datetime.fromisoformat(request.form['start_time'])
@@ -96,18 +123,22 @@ def schedule():
 
     return render_template('schedule.html', reservations=reservations, username=user.username)
 
-@app.route('/admin', methods=['GET'])
+# ---------- ADMIN DASHBOARD ----------
+@app.route('/admin')
 def admin_home():
     if 'username' not in session:
         return redirect(url_for('login'))
 
     user = User.query.filter_by(username=session['username']).first()
-    if not user.is_admin:
+    if not user or not user.is_admin:
         flash('Access denied', 'danger')
         return redirect(url_for('schedule'))
 
     reservations = Reservation.query.all()
     return render_template('admin.html', reservations=reservations)
 
+# =======================
+# Run App
+# =======================
 if __name__ == '__main__':
     app.run(debug=True)
